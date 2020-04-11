@@ -53,7 +53,7 @@ class Learner(object):
 			Predict how the number of people in each compartment can be changed through time toward the future.
 			The model is formulated with the given beta and gamma.
 		"""
-		predict_range = len(data.index)
+		predict_range = 150
 		new_index = self.extend_index(data.index, predict_range)
 		size = len(new_index)
 		def SIR(t, y):
@@ -61,7 +61,7 @@ class Learner(object):
 			I = y[1]
 			R = y[2]
 			return [-beta*S*I, beta*S*I-gamma*I, gamma*I]
-		extended_actual = np.concatenate((data.values.flatten(), [None] * (size - len(data.values))))
+		extended_actual = np.concatenate((data.values.flatten(), [0] * (size - len(data.values))))
 		return new_index, extended_actual, solve_ivp(SIR, [0, size], [S_0,I_0,R_0], t_eval=np.arange(0, size, 1))
 
 	def train(self):
@@ -80,11 +80,12 @@ class Learner(object):
 		beta, gamma = optimal.x
 		print(f'Beta: {beta}, Gamma: {gamma}, R0: {beta/gamma}')
 		new_index, extended_actual, prediction = self.predict(beta, gamma, confirmed_data)
+		extended_recovered = np.concatenate((recovered_data.values.flatten(), [0] * (150 - len(recovered_data.values))))
 		print(f'Predicted I: {prediction.y[1][-1]}, Actual I: {extended_actual[-1] * correction_factor}')
 		print(f'Predicted R: {prediction.y[2][-1]}, Actual R: {recovered_data[-1] * correction_factor}')
 		df = pd.DataFrame({
-			'Actual': extended_actual * correction_factor,
-			'Recovered': recovered_data.values * correction_factor,
+			'Actual': filter_zeroes(extended_actual * correction_factor),
+			'Recovered': filter_zeroes(extended_recovered * correction_factor),
 			# 'S': prediction.y[0],
 			'I': prediction.y[1],
 			'R': prediction.y[2]
@@ -107,6 +108,13 @@ class Learner(object):
 # 		return [-beta*S*I, beta*S*I-gamma*I, gamma*I]
 # 	solution = solve_ivp(SIR, [0, size], [S_0,I_0,R_0], t_eval=np.arange(0, size, 1), vectorized=True)
 # 	return np.sqrt(np.mean((solution.y[1] - data)**2))
+
+def filter_zeroes(arr):
+	out = np.array(arr)
+	for index in range(len(out)):
+		if out[index] == 0:
+			out[index] = None
+	return out
 
 def loss(point, confirmed, recovered):
 	size = len(confirmed)
